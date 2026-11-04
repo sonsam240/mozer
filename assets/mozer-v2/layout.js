@@ -6,6 +6,14 @@
   function valid(raw){
     if(raw?.schema!=='mozer-responsive-v1'||!raw.breakpoints)throw Error('Нужен JSON mozer-responsive-v1');
     const result=clone(window.MOZER_LAYOUT_DEFAULTS);
+    const materials=raw.sceneSettings||result.sceneSettings;
+    const specifications=new Map((window.MOZER_MATERIAL_CONTROLS||[]).flatMap(x=>x[1]).map(row=>[row[0],row]));
+    for(const [key,initial] of Object.entries(result.sceneSettings)){
+      const value=materials[key]??initial,spec=specifications.get(key);
+      if(typeof initial==='string'){if(typeof value!=='string'||!/^#[0-9a-fA-F]{6}$/.test(value))throw Error('Неверный HEX: '+key);}
+      else if(typeof value!=='number'||!Number.isFinite(value)||Math.abs(value)>10000||(spec?.length===5&&(value<spec[2]||value>spec[3])))throw Error('Недопустимое значение: '+key);
+      result.sceneSettings[key]=value;
+    }
     for(const screen of screens){
       const entry=raw.breakpoints[screen];if(!entry)throw Error('Нет экрана '+screen);
       for(const group of ['molecule','wave']){

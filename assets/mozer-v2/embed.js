@@ -1,12 +1,14 @@
 (() => {
   'use strict';
   const script=document.currentScript;
+  const release='20261104-editor2';
   const sceneURL=new URL('../../mozer-scene-v2.html',script.src);
+  sceneURL.searchParams.set('v',release);
   const allowedOrigin=sceneURL.origin;
   const editing=new URLSearchParams(location.search).get('mozerEdit')==='1'||!!document.querySelector('[data-mozer-scene="v2"][data-mozer-editor="true"]');
   let responsiveReady=Promise.resolve();
   if(editing){
-    const load=name=>new Promise((resolve,reject)=>{const s=document.createElement('script');s.src=new URL(name+'.js',script.src);s.onload=resolve;s.onerror=reject;document.head.append(s);});
+    const load=name=>new Promise((resolve,reject)=>{const s=document.createElement('script'),url=new URL(name+'.js',script.src);url.searchParams.set('v',release);s.src=url;s.onload=resolve;s.onerror=reject;document.head.append(s);});
     responsiveReady=(window.MOZER_RESPONSIVE?Promise.resolve():load('layout-defaults').then(()=>load('layout'))).then(()=>load('layout-editor'));
     responsiveReady.catch(()=>console.error('MOZER: не удалось загрузить панель адаптива'));
   }
@@ -21,16 +23,29 @@
     iframe.setAttribute('aria-hidden','true');iframe.tabIndex=-1;
     iframe.loading='eager';iframe.referrerPolicy='strict-origin-when-cross-origin';
     Object.assign(iframe.style,{position:'absolute',inset:'0',width:'100%',height:'100%',border:'0',display:'block',background:'transparent'});
-    if(matchMedia('(pointer:coarse)').matches)iframe.style.pointerEvents='none';
+    // Native wheel/touch events must stay in the page's scrolling document.
+    // Forward coordinates instead of intercepting or synthesizing wheel events.
+    iframe.style.pointerEvents='none';
     host.append(iframe);
-    let active=true,raf=0,scrollRaf=0,backgroundURL='',backgroundImage=null,disposed=false;
+    let active=true,raf=0,scrollRaf=0,pointerRaf=0,lastPointer=null,pointerWasInside=false,backgroundURL='',backgroundImage=null,disposed=false;
+    function pointerMessage(e,kind){
+      const r=iframe.getBoundingClientRect(),blocked=!!e.target?.closest?.('#mozer-layout-editor,a,button,input,select,textarea,[role="button"]');
+      const inside=active&&!blocked&&r.width>0&&r.height>0&&e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;
+      if(!inside&&!pointerWasInside)return;
+      pointerWasInside=inside;
+      iframe.contentWindow?.postMessage({type:'mozer-v2:pointer',kind,inside,x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height},allowedOrigin);
+    }
+    function flushPointer(){pointerRaf=0;if(!disposed&&lastPointer)pointerMessage(lastPointer,'move');}
+    function pointerMove(e){if(e.pointerType==='touch')return;lastPointer={clientX:e.clientX,clientY:e.clientY,target:e.target};if(!pointerRaf)pointerRaf=requestAnimationFrame(flushPointer);}
+    function pointerDown(e){if(e.pointerType!=='touch')pointerMessage(e,'down');}
+    function pointerLeave(){lastPointer=null;if(pointerWasInside){pointerWasInside=false;iframe.contentWindow?.postMessage({type:'mozer-v2:pointer',inside:false},allowedOrigin);}}
     function sendScroll(){
       scrollRaf=0;if(disposed||!iframe.contentWindow)return;
       const r=artboard.getBoundingClientRect(),small=document.documentElement.clientWidth<960;
       const progress=small?Math.max(-1,Math.min(1,-r.top/Math.max(1,Math.min(r.height,innerHeight)))):0;
       iframe.contentWindow.postMessage({type:'mozer-v2:scroll',progress},allowedOrigin);
     }
-    function scrolling(){if(!scrollRaf&&!disposed)scrollRaf=requestAnimationFrame(sendScroll);}
+    function scrolling(){if(!scrollRaf&&!disposed)scrollRaf=requestAnimationFrame(sendScroll);if(lastPointer&&!pointerRaf)pointerRaf=requestAnimationFrame(flushPointer);}
     const positionPart=(v,axis)=>{if(v==='left'||v==='top')return 0;if(v==='right'||v==='bottom')return 1;const n=parseFloat(v);return Number.isFinite(n)&&v.includes('%')?n/100:.5;};
     function background(frame){
       const marked=record.querySelector('.mozer-scene-bg .tn-atom, .mozer-scene-bg.tn-atom');
@@ -68,7 +83,8 @@
     window.addEventListener('mozer-responsive-change',schedule);responsiveReady.then(schedule,()=>{});
     window.addEventListener('resize',resized,{passive:true});document.addEventListener('visibilitychange',schedule);
     window.addEventListener('scroll',scrolling,{passive:true});
+    window.addEventListener('pointermove',pointerMove,{passive:true});window.addEventListener('pointerdown',pointerDown,{passive:true});window.addEventListener('blur',pointerLeave);document.documentElement.addEventListener('pointerleave',pointerLeave);
     document.fonts?.ready.then(resized);resized();
-    window.addEventListener('pagehide',e=>{if(e.persisted)return;disposed=true;cancelAnimationFrame(raf);cancelAnimationFrame(scrollRaf);ro.disconnect();io.disconnect();window.removeEventListener('message',onMessage);window.removeEventListener('resize',resized);window.removeEventListener('scroll',scrolling);window.removeEventListener('mozer-responsive-change',schedule);document.removeEventListener('visibilitychange',schedule);},{once:true});
+    window.addEventListener('pagehide',e=>{if(e.persisted)return;disposed=true;cancelAnimationFrame(raf);cancelAnimationFrame(scrollRaf);cancelAnimationFrame(pointerRaf);ro.disconnect();io.disconnect();window.removeEventListener('pointermove',pointerMove);window.removeEventListener('pointerdown',pointerDown);window.removeEventListener('blur',pointerLeave);document.documentElement.removeEventListener('pointerleave',pointerLeave);window.removeEventListener('message',onMessage);window.removeEventListener('resize',resized);window.removeEventListener('scroll',scrolling);window.removeEventListener('mozer-responsive-change',schedule);document.removeEventListener('visibilitychange',schedule);},{once:true});
   });
 })();

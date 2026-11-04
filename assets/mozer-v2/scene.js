@@ -1234,7 +1234,7 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
  const bodyVelocity=new THREE.Vector3(),bodyAcceleration=new THREE.Vector3();
  let width=1,height=1,viewW=12,viewH=8;
  let focused=-1,hoverX=0,hoverY=0;const hoverWeights=new Float32Array(5);
- let mx=0,my=0,px=0,py=0,zoom=.98,pointerInside=false,time=0,previous=performance.now();
+ let pointerBlend=0,mx=0,my=0,px=0,py=0,zoom=.98,pointerInside=false,time=0,previous=performance.now();
  let averageMs=16.7,qualityAt=previous,frames=0,frameId=0,simulationTime=0,physicsAccumulator=0,sceneReady=false;
  const oilColor=new THREE.Color();
  controls.addEventListener('fluid-reset',()=>{airSeeds.fill(null);airPixels.fill(0);airTexture.needsUpdate=true;basinVersions.fill(-1);new Set(basins).forEach(b=>b.dispose());basins.splice(0,5,...createBasins());simulationTime=0;backgroundFlow.reset();});
@@ -1297,7 +1297,7 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
   tipBases.forEach((v,i)=>v.copy(uniforms.uTips.value[i]));
  }
  new ResizeObserver(resize).observe(stage);resize();
- stage.addEventListener('pointermove',e=>{
+ function handleScenePointerMove(e){
   if(e.pointerType==='touch')return;
   pointerInside=true;
   const rect=stage.getBoundingClientRect();
@@ -1317,9 +1317,10 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
   });
   if(nearest<0&&Math.hypot(x-baseScreen.x,y-baseScreen.y)<uniforms.uCoreRadius.value*zoom)nearest=4;
   focused=nearest;
- });
+ }
+ stage.addEventListener('pointermove',handleScenePointerMove);
  stage.addEventListener('pointerleave',()=>{mx=0;my=0;pointerInside=false;focused=-1;});
- stage.addEventListener('pointerdown',e=>{
+ function handleScenePointerDown(e){
   if(reducedMotion||e.target.closest('a'))return;
   const rect=stage.getBoundingClientRect();
   temp.set(((e.clientX-rect.left)/width-.5)*viewW,(.5-(e.clientY-rect.top)/height)*viewH,0);
@@ -1327,6 +1328,14 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
   let index=0,radius=uniforms.uCoreRadius.value,bx=0,by=0,distance=Math.hypot(temp.x,temp.y)/radius;
   nodes.forEach((n,i)=>{const d=Math.hypot(temp.x-n.pos.x,temp.y-n.pos.y)/.58;if(d<distance){distance=d;index=i+1;radius=.58;bx=n.pos.x;by=n.pos.y;}});
   if(distance<1.)basins[index].impulse(Math.max(-.7,Math.min(.7,(temp.x-bx)/radius)),.35,.65);
+ }
+ stage.addEventListener('pointerdown',handleScenePointerDown);
+ window.addEventListener('message',event=>{
+  const m=event.data;if(event.source!==parent||m?.type!=='mozer-v2:pointer')return;
+  if(!m.inside){mx=0;my=0;pointerInside=false;focused=-1;return;}
+  if(!Number.isFinite(m.x)||!Number.isFinite(m.y)||m.x<0||m.x>1||m.y<0||m.y>1)return;
+  const r=stage.getBoundingClientRect(),e={pointerType:'mouse',clientX:r.left+m.x*width,clientY:r.top+m.y*height,target:stage};
+  handleScenePointerMove(e);if(m.kind==='down')handleScenePointerDown(e);
  });
  function place(el,point,radius){
   const d=radius*2*height/viewH*zoom;
@@ -1352,7 +1361,8 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
   const cpuStart=performance.now();let fluidCpu=0,backCpu=0;const elapsed=now-previous,dt=Math.max(0,Math.min(elapsed/1000,.05));previous=now;
   // First-order settling is monotonic: no spring, inertia, overshoot or local scale.
   const settle=1-Math.exp(-4.5*dt);
-  px+=((reducedMotion?0:mx)-px)*settle;py+=((reducedMotion?0:my)-py)*settle;
+  pointerBlend+=((pointerInside?1:0)-pointerBlend)*(1-Math.exp(-2.4*dt));
+  px+=((reducedMotion?0:mx*pointerBlend)-px)*settle;py+=((reducedMotion?0:my*pointerBlend)-py)*settle;
   if(!reducedMotion&&!fluidSettings.paused){time+=dt*fluidSettings.timeScale;simulationTime+=dt*fluidSettings.timeScale;}
   const lightBreath=1+(fluidSettings.cinemaBreath||0)*Math.sin(time*.55);
   uniforms.uExposure.value=fluidSettings.lightExposure*lightBreath;
@@ -1382,8 +1392,8 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
   ['coreTint','mozerTint','michiTint','wezerTint','unixTint'].forEach((key,i)=>uniforms.uVesselTint.value[i].set(fluidSettings[key]));
   updateSceneLighting(uniforms,fluidSettings);
   stage.dataset.focus=String(focused);stage.dataset.turn=hoverX.toFixed(3)+','+hoverY.toFixed(3);
-  const targetZoom=pointerInside&&!reducedMotion?1.045+.020*(1-Math.min(1,Math.hypot(px,py))):1;
-  zoom+=((targetZoom+.035*hoverAmount)*fluidSettings.moleculeScale*sceneLayout.scale-zoom)*(1-Math.exp(-3.6*dt));uniforms.uScale.value=zoom;
+  const targetZoom=1;
+  zoom+=((targetZoom)*fluidSettings.moleculeScale*sceneLayout.scale-zoom)*(1-Math.exp(-3.6*dt));uniforms.uScale.value=zoom;
   scrollTurn+=((reducedMotion?0:MOZER_HOST.scroll)-scrollTurn)*(1-Math.exp(-4*dt));
   const scrollX=scrollTurn*sceneLayout.molecule.scrollTiltX*Math.PI/180,scrollY=scrollTurn*sceneLayout.molecule.scrollTiltY*Math.PI/180,scrollZ=scrollTurn*sceneLayout.molecule.scrollTiltZ*Math.PI/180;
   euler.set(-py*.115+hoverX+fluidSettings.moleculeTiltX*Math.PI/180+scrollX,px*.145+hoverY+fluidSettings.moleculeTiltY*Math.PI/180+scrollY,-px*.047+py*.012+fluidSettings.moleculeTiltZ*Math.PI/180+scrollZ);
@@ -1528,6 +1538,14 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
   renderer.dispose();renderer.forceContextLoss();
  },{once:true});
  stage.dataset.deviceProfile=MOZER_PROFILE.mobile?'mobile':'desktop';stage.dataset.targetFps=MOZER_PROFILE.fps;stage.dataset.volumeSimulations=MOZER_PROFILE.volumes;
+ function applyMozerMaterials(){
+  const s=MOZER_RESPONSIVE.get().sceneSettings;Object.assign(fluidSettings,s);
+  if(MOZER_PROFILE.mobile)Object.assign(fluidSettings,{particleCount:Math.min(MOZER_PROFILE.particles,s.particleCount),airBubbleCount:Math.min(MOZER_PROFILE.airBubbles,s.airBubbleCount),dofStrength:0,dofBackground:0,renderScale:Math.min(MOZER_PROFILE.maxDpr,s.renderScale)});
+  renderer.domElement.style.filter=s.cinemaContrast===1&&s.cinemaSaturation===1&&s.cinemaWarmth===0&&s.cinemaExposure===1?'none':'contrast('+s.cinemaContrast+') saturate('+s.cinemaSaturation+') sepia('+s.cinemaWarmth+') brightness('+s.cinemaExposure+')';
+  document.documentElement.style.setProperty('--mozer-vignette',s.cinemaVignette);
+  stage.dataset.materialState=JSON.stringify(s);resolution();backgroundAt=-Infinity;
+ }
+ window.addEventListener('mozer-responsive-change',applyMozerMaterials);applyMozerMaterials();
  let lastLayoutWidth=innerWidth,lastLayoutHeight=innerHeight,lastHostScale=MOZER_HOST.scale;
  window.addEventListener('mozer-layout',()=>{
   externallyActive=MOZER_HOST.active;cancelAnimationFrame(frameId);frameId=0;
