@@ -983,7 +983,7 @@ function updateMozerBackdrop(){
  if(config?.url&&config.url!==mozerBackdropURL){loadMozerBackdrop(config.url);return;}
  const image=MOZER_BACKDROP.value?.image;
  const iw=image?.naturalWidth||image?.width,ih=image?.naturalHeight||image?.height;if(!iw||!ih)return;
- const fw=innerWidth*MOZER_HOST.scale,fh=innerHeight*MOZER_HOST.scale;
+ const fw=MOZER_HOST.displayWidth||innerWidth*MOZER_HOST.scale,fh=MOZER_HOST.displayHeight||innerHeight*MOZER_HOST.scale;
  const bw=config?.width||fw,bh=config?.height||fh,position=config?.position||[.5,.5];
  const factor=config?.size==='contain'?Math.min(bw/iw,bh/ih):Math.max(bw/iw,bh/ih);
  let dw=iw*factor,dh=ih*factor;
@@ -999,7 +999,7 @@ function makeStudioEnvironment(THREE){
  if(studioEnvironmentTexture)return studioEnvironmentTexture;
  const texture=new THREE.DataTexture(new Float32Array([1,.8,.5,1]),1,1,THREE.RGBAFormat,THREE.FloatType);
  texture.wrapS=THREE.RepeatWrapping;texture.minFilter=THREE.LinearMipmapLinearFilter;texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=true;texture.needsUpdate=true;
- const file=MOZER_PROFILE.mobile?'studio-mobile.bin':'studio.bin',w=MOZER_PROFILE.mobile?128:256,h=MOZER_PROFILE.mobile?64:128;
+ const file='studio.bin',w=256,h=128;
  MOZER_ASSET_PROMISES.push(fetch(new URL(file,MOZER_ASSET_ROOT)).then(r=>{if(!r.ok)throw Error('Studio map '+r.status);return r.arrayBuffer();}).then(buffer=>{texture.image={data:new Float32Array(buffer),width:w,height:h};texture.needsUpdate=true;}).catch(error=>console.warn('Studio fallback',error)));
  studioEnvironmentTexture=texture;return texture;
 }
@@ -1090,10 +1090,11 @@ function endGpuPass(){if(!activeQuery)return;gpu.endQuery(timerExt.TIME_ELAPSED_
 function pollGpu(){while(pendingGpu.length&&gpu.getQueryParameter(pendingGpu[0].q,gpu.QUERY_RESULT_AVAILABLE)){const {q,label}=pendingGpu.shift();if(!gpu.getParameter(timerExt.GPU_DISJOINT_EXT)){const ms=gpu.getQueryParameter(q,gpu.QUERY_RESULT)/1e6;passTimes[label].push(ms);if(passTimes[label].length>36)passTimes[label].shift();stage.dataset[label+'GpuMs']=ms.toFixed(2);}gpu.deleteQuery(q);}}
 let renderFactor=1,rearFactor=1,perfAt=performance.now(),lastResolutionAt=perfAt,lastRaiseAt=perfAt,renderSetting=fluidSettings.renderScale,frameSamples=[],performanceHistory=[];
 let resolutionPending=false;
-function maximumPixelRatio(){return Math.max(.5,Math.min(fluidSettings.renderScale,MOZER_PROFILE.maxDpr,Math.max(1,MOZER_HOST.scale)*(MOZER_PROFILE.mobile?1:devicePixelRatio||1)));}
-function startingQuality(){return fluidSettings.autoQuality?Math.min(1,Math.sqrt(MOZER_PROFILE.pixelBudget/Math.max(1,width*height))/maximumPixelRatio()):1;}
-function minimumQuality(){return Math.min(1,(MOZER_PROFILE.mobile?.75:1)/maximumPixelRatio());}
-function applyRenderResolution(){const ratio=maximumPixelRatio()*renderFactor;renderer.setPixelRatio(ratio);renderer.setSize(width,height);backgroundTarget.setSize(Math.max(1,Math.round(width*rearFactor)),Math.max(1,Math.round(height*rearFactor)));if(MOZER_PROFILE.postProcess)dofTarget.setSize(Math.round(width*ratio),Math.round(height*ratio));backgroundAt=-Infinity;stage.dataset.pixelRatio=ratio.toFixed(2);stage.dataset.renderScale=renderFactor.toFixed(2);stage.dataset.rearScale=rearFactor.toFixed(2);}
+function qualityPlan(){return MOZER_RENDER_QUALITY.plan({width,height,scale:MOZER_HOST.scale,dpr:MOZER_HOST.deviceDpr||devicePixelRatio||1,profile:MOZER_PROFILE,renderScale:fluidSettings.renderScale,autoQuality:!!fluidSettings.autoQuality});}
+function maximumPixelRatio(){return qualityPlan().maximum;}
+function startingQuality(){return qualityPlan().initial;}
+function minimumQuality(){return qualityPlan().minimum;}
+function applyRenderResolution(){const plan=qualityPlan(),s=MOZER_RENDER_QUALITY.sizes({width,height,plan,mainFactor:renderFactor,rearFactor});renderer.setPixelRatio(s.ratio);renderer.setSize(width,height);backgroundTarget.setSize(s.rearWidth,s.rearHeight);if(MOZER_PROFILE.postProcess)dofTarget.setSize(s.width,s.height);backgroundAt=-Infinity;stage.dataset.pixelRatio=s.ratio.toFixed(2);stage.dataset.visiblePixelRatio=s.visibleDpr.toFixed(2);stage.dataset.canvasPixels=s.width+'x'+s.height;stage.dataset.backgroundPixels=s.rearWidth+'x'+s.rearHeight;stage.dataset.renderScale=renderFactor.toFixed(2);stage.dataset.rearScale=rearFactor.toFixed(2);}
 function percentile(list,fraction){if(!list.length)return 0;const sorted=list.slice().sort((a,b)=>a-b);return sorted[Math.min(sorted.length-1,Math.floor(sorted.length*fraction))];}
 function recordFrame(elapsed,now){
  perfFrame++;pollGpu();
@@ -1270,10 +1271,11 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
  }
  function resize(){
   width=stage.clientWidth;height=stage.clientHeight;
-  const mobile=width<600;
-  viewH=mobile?10.2:6.8;viewW=viewH*width/height;
-  if(mobile&&viewW<4.5){viewW=4.5;viewH=viewW*height/width;}
-  if(!mobile&&viewW<8.4){viewW=8.4;viewH=viewW*height/width;}
+  const mobile=MOZER_HOST.screen?MOZER_HOST.screen<640:width<600;
+  const displayAspect=MOZER_HOST.displayWidth&&MOZER_HOST.displayHeight?MOZER_HOST.displayWidth/MOZER_HOST.displayHeight:width/height;
+  viewH=mobile?10.2:6.8;viewW=viewH*displayAspect;
+  if(mobile&&viewW<4.5){viewW=4.5;viewH=viewW/displayAspect;}
+  if(!mobile&&viewW<8.4){viewW=8.4;viewH=viewW/displayAspect;}
   camera.left=-viewW/2;camera.right=viewW/2;camera.top=viewH/2;camera.bottom=-viewH/2;
   camera.updateProjectionMatrix();renderFactor=startingQuality();resolution();vessel.scale.set(viewW,viewH,1);zoom=fluidSettings.moleculeScale*mozerLayout().scale;updateMozerBackdrop();
   backgroundPlane.scale.set(viewW,viewH,1);
@@ -1546,11 +1548,12 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
   stage.dataset.materialState=JSON.stringify(s);resolution();backgroundAt=-Infinity;
  }
  window.addEventListener('mozer-responsive-change',applyMozerMaterials);applyMozerMaterials();
- let lastLayoutWidth=innerWidth,lastLayoutHeight=innerHeight,lastHostScale=MOZER_HOST.scale;
+ let lastLayoutWidth=innerWidth,lastLayoutHeight=innerHeight,lastHostScale=MOZER_HOST.scale,lastDisplayAspect=0;
  window.addEventListener('mozer-layout',()=>{
   externallyActive=MOZER_HOST.active;cancelAnimationFrame(frameId);frameId=0;
   updateMozerBackdrop();backgroundAt=-Infinity;
-  if(innerWidth!==lastLayoutWidth||innerHeight!==lastLayoutHeight||MOZER_HOST.scale!==lastHostScale){resize();lastLayoutWidth=innerWidth;lastLayoutHeight=innerHeight;lastHostScale=MOZER_HOST.scale;}
+  const displayAspect=MOZER_HOST.displayWidth/Math.max(1,MOZER_HOST.displayHeight);
+  if(innerWidth!==lastLayoutWidth||innerHeight!==lastLayoutHeight||MOZER_HOST.scale!==lastHostScale||Math.abs(displayAspect-lastDisplayAspect)>.0001){resize();lastLayoutWidth=innerWidth;lastLayoutHeight=innerHeight;lastHostScale=MOZER_HOST.scale;lastDisplayAspect=displayAspect;}
   if(sceneReady&&externallyActive&&!document.hidden){previous=performance.now();wakeUntil=previous+500;frameId=requestAnimationFrame(frame);}
  });
  setTimeout(prepareScene,0);

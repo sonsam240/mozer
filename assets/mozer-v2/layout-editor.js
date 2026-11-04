@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   if(document.getElementById('mozer-layout-editor'))return;
-  const api=window.MOZER_RESPONSIVE, storageKey='mozer-responsive-v1-draft-20261104-approved', root=document.createElement('aside');
+  const api=window.MOZER_RESPONSIVE, storageKey='mozer-responsive-v1-draft-20261104-hidpi-settings2', root=document.createElement('aside');
   root.id='mozer-layout-editor';root.setAttribute('aria-label','Адаптив MOZER');
   root.innerHTML=`<style>
   #mozer-layout-editor{position:fixed;z-index:2147483646;top:12px;left:12px;width:290px;max-width:calc(100vw - 24px);color:#28251d;background:#fffdf8f5;border:1px solid #d6cebc;border-radius:14px;box-shadow:0 8px 36px #0002;font:12px/1.4 Arial,sans-serif;box-sizing:border-box;text-align:left;}
@@ -15,6 +15,7 @@
   #mozer-layout-editor .tools{padding:0 12px 6px;display:flex;align-items:center;gap:8px}
   #mozer-layout-editor .tools label{margin:0}#mozer-layout-editor .tools input{width:60px}
   #mozer-layout-editor .export{padding:0 12px;flex-shrink:0}
+  @media(pointer:coarse){#mozer-layout-editor input[type=number],#mozer-layout-editor input[type=text],#mozer-layout-editor select,#mozer-layout-editor textarea{font-size:16px}}
   `;root.append(compactStyle);
   const tools=document.createElement('div');tools.className='tools';tools.innerHTML='<label>Высота <input type="number" aria-label="Высота панели, px" min="180" max="900" step="10" value="300"></label><button type="button" data-action="corner">Перенести</button>';
   root.insertBefore(tools,root.querySelector('.body'));
