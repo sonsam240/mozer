@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   if(document.getElementById('mozer-layout-editor'))return;
-  const api=window.MOZER_RESPONSIVE, storageKey='mozer-responsive-v1-draft', root=document.createElement('aside');
+  const api=window.MOZER_RESPONSIVE, storageKey='mozer-responsive-v1-draft-20261104-approved', root=document.createElement('aside');
   root.id='mozer-layout-editor';root.setAttribute('aria-label','Адаптив MOZER');
   root.innerHTML=`<style>
   #mozer-layout-editor{position:fixed;z-index:2147483646;top:12px;left:12px;width:290px;max-width:calc(100vw - 24px);color:#28251d;background:#fffdf8f5;border:1px solid #d6cebc;border-radius:14px;box-shadow:0 8px 36px #0002;font:12px/1.4 Arial,sans-serif;box-sizing:border-box;text-align:left;}
