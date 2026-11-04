@@ -25,7 +25,11 @@ window.addEventListener('message',event=>{
   MOZER_HOST.scale=Math.max(.25,Math.min(4,Number(m.scale)||1));
   MOZER_HOST.displayWidth=Math.max(0,Number(m.displayWidth)||0);MOZER_HOST.displayHeight=Math.max(0,Number(m.displayHeight)||0);
   MOZER_HOST.deviceDpr=Math.max(0,Math.min(5,Number(m.deviceDpr)||0));
-  MOZER_HOST.screen=mozerScreen(Number(m.viewportWidth)||innerWidth);
+  MOZER_HOST.screen=[320,480,640,960,1200].includes(Number(m.screen))?Number(m.screen):mozerScreen(Number(m.viewportWidth)||innerWidth);
+  if(Number.isFinite(m.pixelWidth)&&Number.isFinite(m.pixelHeight)&&m.pixelWidth>0&&m.pixelHeight>0){
+    const w=Math.round(m.pixelWidth),h=Math.round(m.pixelHeight);document.documentElement.style.setProperty('--mozer-width',w+'px');document.documentElement.style.setProperty('--mozer-height',h+'px');
+    const meta=document.querySelector('meta[name="viewport"]'),content='width='+w+',initial-scale=1';if(meta&&meta.content!==content)meta.content=content;
+  }
   MOZER_HOST.active=m.active!==false;
   MOZER_HOST.safeBottom=Math.max(0,Number(m.safeBottom)||0);
   MOZER_HOST.background=m.background||null;
@@ -34,7 +38,7 @@ window.addEventListener('message',event=>{
 });
 window.addEventListener('mozer-responsive-change',()=>window.dispatchEvent(new Event('mozer-layout')));
 if(parent===window&&new URLSearchParams(location.search).get('layoutEdit')==='1'){
-  window.addEventListener('DOMContentLoaded',()=>{const script=document.createElement('script');script.src=new URL('layout-editor.js?v=20261104-hidpi1',MOZER_ASSET_ROOT);document.head.append(script);});
+  window.addEventListener('DOMContentLoaded',()=>{const script=document.createElement('script');script.src=new URL('layout-editor.js?v=20261104-pixels1',MOZER_ASSET_ROOT);document.head.append(script);});
 }
 if(parent!==window)parent.postMessage({type:'mozer-v2:ready'},'*');
 if(parent!==window){

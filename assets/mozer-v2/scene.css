@@ -1,7 +1,7 @@
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent!important;color:#1d1d1b}
+html,body{margin:0;width:var(--mozer-width,100vw);height:var(--mozer-height,100vh);overflow:hidden;background:transparent!important;color:#1d1d1b}
 *{box-sizing:border-box}
-main,#stage{position:relative;width:100%;height:100%;min-height:0;overflow:hidden;background:transparent!important}
-canvas{display:block;width:100%;height:100%;outline:none;touch-action:pan-y}
+main,#stage{position:relative;width:var(--mozer-width,100vw);height:var(--mozer-height,100vh);min-height:0;overflow:hidden;background:transparent!important}
+canvas{display:block;outline:none;touch-action:pan-y}
 #labels{position:absolute;inset:0;pointer-events:none}
 #core-label,.brand{position:absolute;display:flex;align-items:center;justify-content:center;transform:translate(-50%,-50%);pointer-events:none}
 .logo{display:block;max-width:100%;height:auto;user-select:none;-webkit-user-drag:none}

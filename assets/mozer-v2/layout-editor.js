@@ -30,7 +30,7 @@
   for(let i=0;i<4;i++){const title=['Слева сверху','Справа сверху','Слева снизу','Справа снизу'][i];definitions[0][2].push(['sphereOffsets.'+i+'.0',title+' · сдвиг X',-100,100,1],['sphereOffsets.'+i+'.1',title+' · сдвиг Y',-100,100,1]);}
   definitions[0][2].push(['scrollTiltX','Скролл · наклон X, °',-20,20,.5],['scrollTiltY','Скролл · разворот Y, °',-20,20,.5],['scrollTiltZ','Скролл · поворот Z, °',-20,20,.5]);
   const offsetNote=document.createElement('p');offsetNote.className='note';offsetNote.textContent='Сдвиги шаров — % от условной ширины молекулы: X вправо, Y вниз. Они сохраняют связи и масштабируются вместе с ней.';root.querySelector('[data-fields]').after(offsetNote);
-  const viewport=()=>document.documentElement.clientWidth, current=()=>select.value==='auto'?api.screen(viewport()):Number(select.value);
+  const viewport=()=>document.documentElement.clientWidth,activeScreen=()=>api.screens.includes(window.MOZER_ACTIVE_SCREEN)?window.MOZER_ACTIVE_SCREEN:api.screen(viewport()), current=()=>select.value==='auto'?activeScreen():Number(select.value);
   const get=(obj,path)=>path.split('.').reduce((a,k)=>a[k],obj);
   function change(group,path,value){
     const config=api.get(),parts=path.split('.');let target=config.breakpoints[current()][group];for(const p of parts.slice(0,-1))target=target[p];target[parts.at(-1)]=value;
@@ -56,7 +56,7 @@
     }fields.append(set);
   }
   function render(){
-    const active=api.screen(viewport()),screen=current(),entry=api.get().breakpoints[screen];q('[data-info]').textContent=`Окно ${viewport()} px · активный экран ${active} px${screen!==active?' · редактируете неактивный экран':''}`;
+    const active=activeScreen(),screen=current(),entry=api.get().breakpoints[screen];q('[data-info]').textContent=`Окно ${viewport()} px · активный экран ${active} px${screen!==active?' · редактируете неактивный экран':''}`;
     fields.replaceChildren();
     select.closest('label').hidden=modeSelect.value!=='layout';
     if(modeSelect.value!=='layout'){renderMaterials();q('[data-json]').value=JSON.stringify(api.get(),null,2);return;}
@@ -83,6 +83,7 @@
     if(action==='erase'){try{localStorage.removeItem(storageKey);}catch{}api.set(api.defaults());render();status.textContent='Черновик удалён, исходные значения восстановлены';}
   });
   select.addEventListener('change',render);window.addEventListener('resize',render,{passive:true});
+  window.addEventListener('mozer-screen',render);
   modeSelect.addEventListener('change',render);
   try{const saved=localStorage.getItem(storageKey);if(saved)api.set(JSON.parse(saved));}catch{}
   render();
