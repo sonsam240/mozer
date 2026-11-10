@@ -1,4 +1,18 @@
 
+// WebGL2 guarantees filtering of half-float textures. Float32 linear filtering
+// requires OES_texture_float_linear, which is absent on some Safari GPUs.
+const mozerHalfSources=new WeakMap();
+function mozerUploadTexture(texture){
+ if((texture.type===THREE.FloatType||texture.type===THREE.HalfFloatType)&&texture.magFilter!==THREE.NearestFilter){
+  let state=mozerHalfSources.get(texture),input=texture.image.data;
+  if(input instanceof Float32Array){
+   if(!state||state.source!==input)state={source:input,packed:new Uint16Array(input.length)};
+  }
+  if(state){for(let i=0;i<state.source.length;i++)state.packed[i]=THREE.DataUtils.toHalfFloat(Math.max(-65504,Math.min(65504,state.source[i])));texture.type=THREE.HalfFloatType;texture.image.data=state.packed;mozerHalfSources.set(texture,state);}
+ }
+ texture.needsUpdate=true;
+}
+
 // Position Based Fluids: one population with pressure constraints, viscosity,
 // gravity and solid-wall collisions. No droplet emitter or prescribed surface.
 class VolumeFluid {
@@ -741,7 +755,7 @@ function createBackgroundFlow(THREE){
  let fluid=freshFluid(),lastTime=0;
  const texture=new THREE.Data3DTexture(fluid.field,128,32,16);
  texture.format=THREE.RedFormat;texture.type=THREE.FloatType;texture.unpackAlignment=1;
- texture.minFilter=texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;texture.needsUpdate=true;
+ texture.minFilter=texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;mozerUploadTexture(texture);
  const boundsData=new Float32Array(128*4),boundsTexture=new THREE.DataTexture(boundsData,128,1,THREE.RGBAFormat,THREE.FloatType);
  boundsTexture.minFilter=boundsTexture.magFilter=THREE.NearestFilter;boundsTexture.needsUpdate=true;
  function updateBounds(){
@@ -756,7 +770,7 @@ function createBackgroundFlow(THREE){
  }
  updateBounds();
  const curveData=new Float32Array(1024*4);for(let i=0;i<1024;i++){const t=(i+.5)/1024*1.08-.04;curveData[i*4]=-.02+Math.pow(Math.max(0,(t-.48)/.52),1.65)*.30+.11*Math.sin(t*6.283185+.5)+.035*Math.sin(t*12.56637-1.);}
- const curveTexture=new THREE.DataTexture(curveData,1024,1,THREE.RGBAFormat,THREE.FloatType);curveTexture.minFilter=curveTexture.magFilter=THREE.LinearFilter;curveTexture.needsUpdate=true;
+ const curveTexture=new THREE.DataTexture(curveData,1024,1,THREE.RGBAFormat,THREE.FloatType);curveTexture.minFilter=curveTexture.magFilter=THREE.LinearFilter;mozerUploadTexture(curveTexture);
  const uniforms={uCurve:{value:curveTexture},...makeSceneLightingUniforms(THREE),uReflectionCeiling:{value:2.8},uFlowOffset:{value:new THREE.Vector2()},uFlowInv:{value:new THREE.Matrix3()},uFlowScale:{value:new THREE.Vector3(1,1,1)},uBounds:{value:boundsTexture},uView:{value:new THREE.Vector2()},uField:{value:texture},uOilColor:{value:new THREE.Color()},uShadeColor:{value:new THREE.Color()},uHighlightColor:{value:new THREE.Color()},uAbsorption:{value:new THREE.Vector3()},uDensity:{value:2.1},uGlassColor:{value:new THREE.Color()},uGlassRoughness:{value:.03}};
  const studioSource=liquidFragment.slice(liquidFragment.indexOf('float spot('),liquidFragment.indexOf('// One reconstructed'));
  const fragment=`precision highp float;precision highp sampler3D;in vec2 vUv;out vec4 outColor;
@@ -840,7 +854,7 @@ function createBackgroundFlow(THREE){
   const oil=uniforms.uOilColor.value,max=Math.max(oil.r,oil.g,oil.b,.001);
   setOilAbsorption(uniforms.uAbsorption.value,oil);
   fluid.flowSpeed=settings.speed;fluid.force=settings.waveForce;fluid.amplitude=settings.waveAmplitude;fluid.splash=settings.waveSplash;fluid.viscosity=settings.waveViscosity;fluid.turbulence=settings.waveTurbulence;fluid.swirl=settings.waveSwirl;
-  if(time>lastTime){fluid.step(Math.min(.05,(time-lastTime)*settings.waveSpeed));if(uploadedFlowVersion!==fluid.version){texture.image.data=fluid.reconstruct();texture.needsUpdate=true;updateBounds();uploadedFlowVersion=fluid.version;}}
+  if(time>lastTime){fluid.step(Math.min(.05,(time-lastTime)*settings.waveSpeed));if(uploadedFlowVersion!==fluid.version){texture.image.data=fluid.reconstruct();mozerUploadTexture(texture);updateBounds();uploadedFlowVersion=fluid.version;}}
   lastTime=time;
     const nowMotion=performance.now();if(!settings.paused)particleTime+=Math.min(.1,(nowMotion-lastMotionAt)/1000)*settings.particleSpeed;lastMotionAt=nowMotion;lightUniforms.uTime.value=particleTime;lightUniforms.uPixelScale.value=settings.particleSize;lightUniforms.uBrightness.value=settings.particleBrightness;lightUniforms.uBokeh.value=settings.cinemaBokeh??.65;lightUniforms.uGlow.value=settings.cinemaGlow??.6;
   for(let i=0;i<96;i++){
@@ -852,7 +866,7 @@ function createBackgroundFlow(THREE){
   }
   lightGeometry.attributes.position.needsUpdate=true;
  }
- return {scene,frontParticles,update,reset(){fluid.dispose();fluid=freshFluid();lastTime=0;texture.image.data=fluid.reconstruct();texture.needsUpdate=true;},ready:()=>fluid.p.length>0,particleCount:()=>fluid.count};
+ return {scene,frontParticles,update,reset(){fluid.dispose();fluid=freshFluid();lastTime=0;texture.image.data=fluid.reconstruct();mozerUploadTexture(texture);},ready:()=>fluid.p.length>0,particleCount:()=>fluid.count};
 }
 function createBackgroundFlowUnused(THREE){
  const scene=new THREE.Scene();
@@ -860,7 +874,7 @@ function createBackgroundFlowUnused(THREE){
  let fluid=freshFluid(),lastTime=0;
  const texture=new THREE.Data3DTexture(fluid.field,128,32,16);
  texture.format=THREE.RedFormat;texture.type=THREE.FloatType;texture.unpackAlignment=1;
- texture.minFilter=texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;texture.needsUpdate=true;
+ texture.minFilter=texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=false;mozerUploadTexture(texture);
  const boundsData=new Float32Array(128*4),boundsTexture=new THREE.DataTexture(boundsData,128,1,THREE.RGBAFormat,THREE.FloatType);
  boundsTexture.minFilter=boundsTexture.magFilter=THREE.NearestFilter;boundsTexture.needsUpdate=true;
  function updateBounds(){
@@ -934,7 +948,7 @@ function createBackgroundFlowUnused(THREE){
   const oil=uniforms.uOilColor.value,max=Math.max(oil.r,oil.g,oil.b,.001);
   setOilAbsorption(uniforms.uAbsorption.value,oil);
   fluid.flowSpeed=settings.speed;fluid.force=settings.force;fluid.amplitude=settings.amplitude;fluid.splash=settings.splash;fluid.viscosity=settings.viscosity;fluid.turbulence=.10;
-  if(time>lastTime){fluid.step(Math.min(.05,(time-lastTime)*.35));texture.image.data=fluid.reconstruct();texture.needsUpdate=true;updateBounds();}
+  if(time>lastTime){fluid.step(Math.min(.05,(time-lastTime)*.35));texture.image.data=fluid.reconstruct();mozerUploadTexture(texture);updateBounds();}
   lastTime=time;
     lightUniforms.uTime.value=time;
   for(let i=0;i<32;i++){
@@ -944,7 +958,7 @@ function createBackgroundFlowUnused(THREE){
   }
   lightGeometry.attributes.position.needsUpdate=true;
  }
- return {scene,update,reset(){fluid=freshFluid();lastTime=0;texture.image.data=fluid.reconstruct();texture.needsUpdate=true;},particleCount:()=>fluid.count};
+ return {scene,update,reset(){fluid=freshFluid();lastTime=0;texture.image.data=fluid.reconstruct();mozerUploadTexture(texture);},particleCount:()=>fluid.count};
 }
 
 const fluidDefaults={...MOZER_DEFAULTS};
@@ -998,9 +1012,9 @@ let studioEnvironmentTexture;
 function makeStudioEnvironment(THREE){
  if(studioEnvironmentTexture)return studioEnvironmentTexture;
  const texture=new THREE.DataTexture(new Float32Array([1,.8,.5,1]),1,1,THREE.RGBAFormat,THREE.FloatType);
- texture.wrapS=THREE.RepeatWrapping;texture.minFilter=THREE.LinearMipmapLinearFilter;texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=true;texture.needsUpdate=true;
+ texture.wrapS=THREE.RepeatWrapping;texture.minFilter=THREE.LinearMipmapLinearFilter;texture.magFilter=THREE.LinearFilter;texture.generateMipmaps=true;mozerUploadTexture(texture);
  const file='studio.bin',w=256,h=128;
- MOZER_ASSET_PROMISES.push(fetch(new URL(file,MOZER_ASSET_ROOT)).then(r=>{if(!r.ok)throw Error('Studio map '+r.status);return r.arrayBuffer();}).then(buffer=>{texture.image={data:new Float32Array(buffer),width:w,height:h};texture.needsUpdate=true;}).catch(error=>console.warn('Studio fallback',error)));
+ MOZER_ASSET_PROMISES.push(fetch(new URL(file,MOZER_ASSET_ROOT)).then(r=>{if(!r.ok)throw Error('Studio map '+r.status);return r.arrayBuffer();}).then(buffer=>{texture.image={data:new Float32Array(buffer),width:w,height:h};mozerUploadTexture(texture);}).catch(error=>console.warn('Studio fallback',error)));
  studioEnvironmentTexture=texture;return texture;
 }
 function setOilAbsorption(target,color){
@@ -1050,7 +1064,7 @@ class RenderFluid {
  }
  settings(){const {flowSpeed,force,amplitude,viscosity,splash,turbulence,swirl,fillAmount}=this;return {flowSpeed,force,amplitude,viscosity,splash,turbulence,swirl,fillAmount};}
  setAmplitude(value){this.amplitude=value;}
- step(dt,...args){this.pending+=dt;if(this.busy)return;this.busy=true;const advance=Math.min(.05,this.pending);this.pending-=advance;this.worker.postMessage({id:this.id,op:'step',settings:this.settings(),args:[advance,...args]});}
+ step(dt,...args){this.pending=Math.min(.1,this.pending+dt);if(this.busy)return;this.busy=true;const advance=Math.min(.05,this.pending);this.pending-=advance;this.worker.postMessage({id:this.id,op:'step',settings:this.settings(),args:[advance,...args]});}
  reconstruct(){return this.field;}
  impulse(...args){this.worker.postMessage({id:this.id,op:'impulse',args});}
  dispose(){workerFluids.delete(this.id);this.worker.postMessage({id:this.id,op:'dispose'});}
@@ -1083,18 +1097,24 @@ if(renderer){
  const camera=new THREE.OrthographicCamera(-6,6,4,-4,.1,100);
  camera.position.set(0,0,20);
  // Measure render passes separately; a timer covering CPU work overstates GPU cost.
-const gpu=renderer.getContext(),timerExt=MOZER_PROFILE.mobile?null:gpu.getExtension('EXT_disjoint_timer_query_webgl2'),pendingGpu=[];
+const gpu=renderer.getContext(),timerExt=gpu.getExtension('EXT_disjoint_timer_query_webgl2'),pendingGpu=[];
 const passTimes={main:[],background:[]};let perfFrame=0,activeQuery=null;
 function startGpuPass(label){if(!timerExt||perfFrame%12||pendingGpu.length>8)return;const q=gpu.createQuery();gpu.beginQuery(timerExt.TIME_ELAPSED_EXT,q);activeQuery={q,label};}
 function endGpuPass(){if(!activeQuery)return;gpu.endQuery(timerExt.TIME_ELAPSED_EXT);pendingGpu.push(activeQuery);activeQuery=null;}
 function pollGpu(){while(pendingGpu.length&&gpu.getQueryParameter(pendingGpu[0].q,gpu.QUERY_RESULT_AVAILABLE)){const {q,label}=pendingGpu.shift();if(!gpu.getParameter(timerExt.GPU_DISJOINT_EXT)){const ms=gpu.getQueryParameter(q,gpu.QUERY_RESULT)/1e6;passTimes[label].push(ms);if(passTimes[label].length>36)passTimes[label].shift();stage.dataset[label+'GpuMs']=ms.toFixed(2);}gpu.deleteQuery(q);}}
 let renderFactor=1,rearFactor=1,perfAt=performance.now(),lastResolutionAt=perfAt,lastRaiseAt=perfAt,renderSetting=fluidSettings.renderScale,frameSamples=[],performanceHistory=[];
-let resolutionPending=false;
+let resolutionPending=false,lastRenderSize='';
+let adaptiveBackgroundHz=MOZER_PROFILE.backgroundHz;
+function requestQuality(nextMain,nextRear,now){
+ const changed=Math.abs(renderFactor-nextMain)>.001||Math.abs(rearFactor-nextRear)>.001;
+ if(changed){renderFactor=nextMain;rearFactor=nextRear;resolutionPending=true;}
+ lastResolutionAt=now;lastRaiseAt=now;return changed;
+}
 function qualityPlan(){return MOZER_RENDER_QUALITY.plan({width,height,scale:MOZER_HOST.scale,dpr:MOZER_HOST.deviceDpr||devicePixelRatio||1,profile:MOZER_PROFILE,renderScale:fluidSettings.renderScale,autoQuality:!!fluidSettings.autoQuality});}
 function maximumPixelRatio(){return qualityPlan().maximum;}
 function startingQuality(){return qualityPlan().initial;}
 function minimumQuality(){return qualityPlan().minimum;}
-function applyRenderResolution(){const plan=qualityPlan(),s=MOZER_RENDER_QUALITY.sizes({width,height,plan,mainFactor:renderFactor,rearFactor});renderer.setPixelRatio(s.ratio);renderer.setSize(width,height);backgroundTarget.setSize(s.rearWidth,s.rearHeight);if(MOZER_PROFILE.postProcess)dofTarget.setSize(s.width,s.height);backgroundAt=-Infinity;stage.dataset.pixelRatio=s.ratio.toFixed(2);stage.dataset.visiblePixelRatio=s.visibleDpr.toFixed(2);stage.dataset.canvasPixels=s.width+'x'+s.height;stage.dataset.backgroundPixels=s.rearWidth+'x'+s.rearHeight;stage.dataset.renderScale=renderFactor.toFixed(2);stage.dataset.rearScale=rearFactor.toFixed(2);}
+function applyRenderResolution(){const plan=qualityPlan(),s=MOZER_RENDER_QUALITY.sizes({width,height,plan,mainFactor:renderFactor,rearFactor});const sizeKey=[width,height,s.ratio,s.rearWidth,s.rearHeight].join(':');if(sizeKey===lastRenderSize)return;lastRenderSize=sizeKey;renderer.setPixelRatio(s.ratio);renderer.setSize(width,height);backgroundTarget.setSize(s.rearWidth,s.rearHeight);if(MOZER_PROFILE.postProcess)dofTarget.setSize(s.width,s.height);backgroundAt=-Infinity;stage.dataset.pixelRatio=s.ratio.toFixed(2);stage.dataset.visiblePixelRatio=s.visibleDpr.toFixed(2);stage.dataset.canvasPixels=s.width+'x'+s.height;stage.dataset.backgroundPixels=s.rearWidth+'x'+s.rearHeight;stage.dataset.renderScale=renderFactor.toFixed(2);stage.dataset.rearScale=rearFactor.toFixed(2);}
 function percentile(list,fraction){if(!list.length)return 0;const sorted=list.slice().sort((a,b)=>a-b);return sorted[Math.min(sorted.length-1,Math.floor(sorted.length*fraction))];}
 function recordFrame(elapsed,now){
  perfFrame++;pollGpu();
@@ -1109,9 +1129,11 @@ function recordFrame(elapsed,now){
  if(now-perfAt<2000||frameSamples.length<20)return;
  const mean=frameSamples.reduce((sum,t)=>sum+t,0)/frameSamples.length,p95=percentile(frameSamples,.95),fps=Math.round(1000/mean);
  performanceHistory.push({fps,p95:Number(p95.toFixed(1)),scale:renderFactor,focus:Number(stage.dataset.focus)});if(performanceHistory.length>20)performanceHistory.shift();stage.dataset.performanceHistory=JSON.stringify(performanceHistory);
- stage.dataset.fps=String(fps);stage.dataset.frameP95=p95.toFixed(1);stage.dataset.quality=renderFactor.toFixed(2);stage.dataset.framesOver25=String(frameSamples.filter(t=>t>25).length);
+ stage.dataset.backgroundHz=String(adaptiveBackgroundHz);stage.dataset.fps=String(fps);stage.dataset.frameP95=p95.toFixed(1);stage.dataset.quality=renderFactor.toFixed(2);stage.dataset.framesOver25=String(frameSamples.filter(t=>t>25).length);
  if(fluidSettings.autoQuality&&now-lastResolutionAt>2200){
-  if(fps<MOZER_PROFILE.fps-3||(p95>1500/MOZER_PROFILE.fps&&frameSamples.filter(t=>t>1500/MOZER_PROFILE.fps).length>frameSamples.length*.1)){renderFactor=Math.max(minimumQuality(),renderFactor*.90);rearFactor=Math.max(.85,rearFactor*.94);resolutionPending=true;lastResolutionAt=now;lastRaiseAt=now;}
+  if(fps<MOZER_PROFILE.fps-3||(p95>1500/MOZER_PROFILE.fps&&frameSamples.filter(t=>t>1500/MOZER_PROFILE.fps).length>frameSamples.length*.1)){requestQuality(Math.max(minimumQuality(),renderFactor*.90),Math.max(.85,rearFactor*.94),now);
+   // Reduce the expensive rear pass frequency before sacrificing further spatial detail.
+   adaptiveBackgroundHz=Math.max(Math.min(MOZER_PROFILE.backgroundHz,MOZER_PROFILE.mobile?15:20),adaptiveBackgroundHz-5);}
   else if(fps>=MOZER_PROFILE.fps-1&&p95<1150/MOZER_PROFILE.fps&&now-lastRaiseAt>8000&&renderFactor<1&&(lastMain*.5+lastRear*.25)<7){renderFactor=Math.min(1,renderFactor+.03);rearFactor=Math.min(1,rearFactor+.03);resolutionPending=true;lastResolutionAt=now;lastRaiseAt=now;}
  }
  fpsIndicator.textContent=fps+' FPS';
@@ -1177,7 +1199,7 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
  waveTexture.format=THREE.RedFormat;waveTexture.type=THREE.FloatType;
  waveTexture.unpackAlignment=1;
  waveTexture.minFilter=waveTexture.magFilter=THREE.LinearFilter;
- waveTexture.generateMipmaps=false;waveTexture.needsUpdate=true;
+ waveTexture.generateMipmaps=false;mozerUploadTexture(waveTexture);
  // Printed decals are sampled at the actual glass ray intersection.
  const logoCanvas=document.createElement('canvas');logoCanvas.width=512;logoCanvas.height=2560;
  const logoContext=logoCanvas.getContext('2d');
@@ -1423,7 +1445,7 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
   if(requestedFill!==pendingFill){pendingFill=requestedFill;fillChangedAt=now;}
   if(appliedFill!==pendingFill&&now-fillChangedAt>180){
    appliedFill=pendingFill;new Set(basins).forEach(b=>b.dispose());basins.splice(0,5,...createBasins());
-   airSeeds.fill(null);airPixels.fill(0);airTexture.needsUpdate=true;wavePixels.fill(0);basinVersions.fill(-1);waveTexture.needsUpdate=true;
+   airSeeds.fill(null);airPixels.fill(0);airTexture.needsUpdate=true;wavePixels.fill(0);basinVersions.fill(-1);mozerUploadTexture(waveTexture);
   }
   physicsAccumulator+=dt;
   if(physicsAccumulator>=1/MOZER_PROFILE.physicsHz){
@@ -1435,7 +1457,7 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
     if(basinVersions[i]!==basin.version||airCountChanged)updateAir(basin,i);
     if(basinVersions[i]!==basin.version){wavePixels.set(basin.reconstruct(),i*32*32*32);basinVersions[i]=basin.version;densityChanged=true;}
    });
-   if(densityChanged)waveTexture.needsUpdate=true;uploadedAirCount=fluidSettings.airBubbleCount;fluidCpu=performance.now()-fluidStart;
+   if(densityChanged)mozerUploadTexture(waveTexture);uploadedAirCount=fluidSettings.airBubbleCount;fluidCpu=performance.now()-fluidStart;
   }
   stage.dataset.streamParticles=String(backgroundFlow.particleCount());stage.dataset.streamReady=String(backgroundFlow.ready());
   stage.dataset.particles=String(basins.reduce((count,basin)=>count+basin.count,0));
@@ -1502,14 +1524,14 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
   nodes.forEach(n=>{temp.copy(n.pos).applyMatrix4(rotation).multiplyScalar(zoom).add(center);place(n.a,temp,n.radius);});
   updateRenderBounds();
   const currentBackgroundKey=fluidSettings.oil+fluidSettings.highlight+fluidSettings.shade+fluidSettings.glass+fluidSettings.roughness;
-  if(now-backgroundAt>1000/MOZER_PROFILE.backgroundHz||currentBackgroundKey!==backgroundKey){
+  if(now-backgroundAt>1000/adaptiveBackgroundHz||currentBackgroundKey!==backgroundKey){
    const backStart=performance.now();backgroundFlow.update(time,viewW,viewH,fluidSettings);
    renderer.setRenderTarget(backgroundTarget);startGpuPass("background");renderer.render(backgroundFlow.scene,camera);endGpuPass();renderer.setRenderTarget(null);
    backCpu=performance.now()-backStart;backgroundAt=now;backgroundKey=currentBackgroundKey;
   }
   stage.dataset.frontParticles=String(Math.floor(fluidSettings.particleCount/3));
   uniforms.uExposure.value=fluidSettings.lightExposure*lightBreath;stage.dataset.cinemaBreath=String(fluidSettings.cinemaBreath||0);
-  startGpuPass("main");if(MOZER_PROFILE.postProcess){updateDepthOfField(dt);renderer.setRenderTarget(dofTarget);renderer.render(scene,camera);renderer.setRenderTarget(null);renderer.render(dofScene,camera);}else{renderer.setRenderTarget(null);renderer.render(scene,camera);}endGpuPass();stage.dataset.cpuMs=(performance.now()-cpuStart).toFixed(2);stage.dataset.fluidMs=fluidCpu.toFixed(2);stage.dataset.solverClock=basins[0].clock.toFixed(2);stage.dataset.simulationClock=time.toFixed(2);stage.dataset.solverPending=basins[0].pending.toFixed(2);stage.dataset.solverMs=basins.reduce((n,b)=>n+(b.solverMs||0),0).toFixed(2);stage.dataset.backgroundMs=backCpu.toFixed(2);
+  startGpuPass("main");if(MOZER_PROFILE.postProcess&&((fluidSettings.dofStrength||0)>0||(fluidSettings.dofBackground||0)>0)){updateDepthOfField(dt);renderer.setRenderTarget(dofTarget);renderer.render(scene,camera);renderer.setRenderTarget(null);renderer.render(dofScene,camera);}else{renderer.setRenderTarget(null);renderer.render(scene,camera);}endGpuPass();stage.dataset.cpuMs=(performance.now()-cpuStart).toFixed(2);stage.dataset.fluidMs=fluidCpu.toFixed(2);stage.dataset.solverClock=basins[0].clock.toFixed(2);stage.dataset.simulationClock=time.toFixed(2);stage.dataset.solverPending=basins[0].pending.toFixed(2);stage.dataset.solverMs=basins.reduce((n,b)=>n+(b.solverMs||0),0).toFixed(2);stage.dataset.backgroundMs=backCpu.toFixed(2);
   if(!window.mozerStartup.phases.firstFrame){mozerReport('firstFrame');stage.dataset.firstFrameCpuMs=(performance.now()-cpuStart).toFixed(1);}
   recordFrame(elapsed,now);
   if(!reducedMotion||now<wakeUntil)frameId=requestAnimationFrame(frame);
@@ -1539,7 +1561,7 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
   sceneReady=false;cancelAnimationFrame(frameId);fluidWorkers.forEach(worker=>worker.terminate());
   renderer.dispose();renderer.forceContextLoss();
  },{once:true});
- stage.dataset.deviceProfile=MOZER_PROFILE.mobile?'mobile':'desktop';stage.dataset.targetFps=MOZER_PROFILE.fps;stage.dataset.volumeSimulations=MOZER_PROFILE.volumes;
+ stage.dataset.texturePrecision='float16-linear';stage.dataset.deviceProfile=MOZER_PROFILE.mobile?'mobile':(MOZER_PROFILE.lite?'desktop-lite':'desktop');stage.dataset.targetFps=MOZER_PROFILE.fps;stage.dataset.volumeSimulations=MOZER_PROFILE.volumes;
  function applyMozerMaterials(){
   const s=MOZER_RESPONSIVE.get().sceneSettings;Object.assign(fluidSettings,s);
   if(MOZER_PROFILE.mobile)Object.assign(fluidSettings,{particleCount:Math.min(MOZER_PROFILE.particles,s.particleCount),airBubbleCount:Math.min(MOZER_PROFILE.airBubbles,s.airBubbleCount),dofStrength:0,dofBackground:0,renderScale:Math.min(MOZER_PROFILE.maxDpr,s.renderScale)});
