@@ -1108,6 +1108,19 @@ function endGpuPass(){if(!activeQuery)return;gpu.endQuery(timerExt.TIME_ELAPSED_
 function pollGpu(){while(pendingGpu.length&&gpu.getQueryParameter(pendingGpu[0].q,gpu.QUERY_RESULT_AVAILABLE)){const {q,label}=pendingGpu.shift();if(!gpu.getParameter(timerExt.GPU_DISJOINT_EXT)){const ms=gpu.getQueryParameter(q,gpu.QUERY_RESULT)/1e6;passTimes[label].push(ms);if(passTimes[label].length>36)passTimes[label].shift();stage.dataset[label+'GpuMs']=ms.toFixed(2);}gpu.deleteQuery(q);}}
 let renderFactor=1,rearFactor=1,perfAt=performance.now(),lastResolutionAt=perfAt,lastRaiseAt=perfAt,renderSetting=fluidSettings.renderScale,frameSamples=[],performanceHistory=[];
 let resolutionPending=false,lastRenderSize='';
+let targetFps=MOZER_PROFILE.fps,physicsHz=MOZER_PROFILE.physicsHz,lastPaceChange=performance.now(),fastWindows=0;
+function choosePace(fps,p95,now){
+ if(!MOZER_PROFILE.lite)return;
+ const main=percentile(passTimes.main.slice(-12),.8),rear=percentile(passTimes.background.slice(-12),.8);
+ if(targetFps===30){
+  const headroom=passTimes.main.length>=6&&passTimes.background.length>=3&&main+rear<11&&Number(stage.dataset.cpuMs||0)<7&&fps>=28;
+  fastWindows=headroom?fastWindows+1:0;
+  if(fastWindows>=2&&now-lastPaceChange>15000){targetFps=60;physicsHz=30;adaptiveBackgroundHz=30;lastPaceChange=now;fastWindows=0;}
+ }else if(now-lastPaceChange>4000&&(fps<48||p95>30)){
+  targetFps=30;physicsHz=MOZER_PROFILE.physicsHz;adaptiveBackgroundHz=MOZER_PROFILE.backgroundHz;lastPaceChange=now;fastWindows=0;
+ }
+ stage.dataset.targetFps=String(targetFps);
+}
 let adaptiveBackgroundHz=MOZER_PROFILE.backgroundHz;
 function requestQuality(nextMain,nextRear,now){
  const changed=Math.abs(renderFactor-nextMain)>.001||Math.abs(rearFactor-nextRear)>.001;
@@ -1135,12 +1148,12 @@ function recordFrame(elapsed,now){
  performanceHistory.push({fps,p95:Number(p95.toFixed(1)),scale:renderFactor,focus:Number(stage.dataset.focus)});if(performanceHistory.length>20)performanceHistory.shift();stage.dataset.performanceHistory=JSON.stringify(performanceHistory);
  stage.dataset.backgroundHz=String(adaptiveBackgroundHz);stage.dataset.fps=String(fps);stage.dataset.frameP95=p95.toFixed(1);stage.dataset.quality=renderFactor.toFixed(2);stage.dataset.framesOver25=String(frameSamples.filter(t=>t>25).length);
  if(fluidSettings.autoQuality&&now-lastResolutionAt>2200){
-  if(fps<MOZER_PROFILE.fps-3||(p95>1500/MOZER_PROFILE.fps&&frameSamples.filter(t=>t>1500/MOZER_PROFILE.fps).length>frameSamples.length*.1)){requestQuality(Math.max(minimumQuality(),renderFactor*.90),Math.max(.85,rearFactor*.94),now);
+  if(fps<targetFps-3||(p95>1500/targetFps&&frameSamples.filter(t=>t>1500/targetFps).length>frameSamples.length*.1)){requestQuality(Math.max(minimumQuality(),renderFactor*.90),Math.max(.85,rearFactor*.94),now);
    // Reduce the expensive rear pass frequency before sacrificing further spatial detail.
    adaptiveBackgroundHz=Math.max(Math.min(MOZER_PROFILE.backgroundHz,MOZER_PROFILE.mobile?15:20),adaptiveBackgroundHz-5);}
-  else if(fps>=MOZER_PROFILE.fps-1&&p95<1150/MOZER_PROFILE.fps&&now-lastRaiseAt>8000&&renderFactor<1&&(lastMain*.5+lastRear*.25)<7){renderFactor=Math.min(1,renderFactor+.03);rearFactor=Math.min(1,rearFactor+.03);resolutionPending=true;lastResolutionAt=now;lastRaiseAt=now;}
+  else if(fps>=targetFps-1&&p95<1150/targetFps&&now-lastRaiseAt>8000&&renderFactor<1&&(lastMain*.5+lastRear*.25)<7){renderFactor=Math.min(1,renderFactor+.03);rearFactor=Math.min(1,rearFactor+.03);resolutionPending=true;lastResolutionAt=now;lastRaiseAt=now;}
  }
- fpsIndicator.textContent=fps+' FPS';
+ choosePace(fps,p95,now);fpsIndicator.textContent=fps+' FPS / '+targetFps;
  frameSamples=[];perfAt=now;
 }
 
@@ -1374,7 +1387,7 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
  let externallyActive=true,lastDrawAt=0,wakeUntil=0,scrollTurn=0;
  function frame(now){
   frameId=0;if(document.hidden||!externallyActive)return;
-  if(MOZER_PROFILE.fps<60&&now-lastDrawAt<1000/MOZER_PROFILE.fps-1){frameId=requestAnimationFrame(frame);return;}lastDrawAt=now;
+  if(targetFps<60){const interval=1000/targetFps,delta=now-lastDrawAt;if(delta<interval-.5){frameId=requestAnimationFrame(frame);return;}lastDrawAt+=Math.floor((delta+.5)/interval)*interval;}else lastDrawAt=now;
   const sceneLayout=mozerLayout();
   fluidSettings.coreSize=sceneLayout.molecule.coreSize;
   for(let i=0;i<4;i++)fluidSettings['sphereSize'+i]=sceneLayout.molecule.sphereSizes[i];
@@ -1452,7 +1465,7 @@ controls.addEventListener('fluid-reset',()=>{renderFactor=startingQuality();rear
    airSeeds.fill(null);airPixels.fill(0);airTexture.needsUpdate=true;wavePixels.fill(0);basinVersions.fill(-1);mozerUploadTexture(waveTexture);
   }
   physicsAccumulator+=dt;
-  if(physicsAccumulator>=1/MOZER_PROFILE.physicsHz){
+  if(physicsAccumulator>=1/physicsHz){
    const fluidStart=performance.now();const physicsDt=physicsAccumulator;physicsAccumulator=0;
        let densityChanged=false;const airCountChanged=uploadedAirCount!==fluidSettings.airBubbleCount;
     basins.forEach((basin,i)=>{

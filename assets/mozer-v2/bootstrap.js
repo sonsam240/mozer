@@ -40,7 +40,7 @@ window.addEventListener('message',event=>{
 });
 window.addEventListener('mozer-responsive-change',()=>window.dispatchEvent(new Event('mozer-layout')));
 if(parent===window&&new URLSearchParams(location.search).get('layoutEdit')==='1'){
-  window.addEventListener('DOMContentLoaded',()=>{const script=document.createElement('script');script.src=new URL('layout-editor.js?v=20261110-lite-fps1',MOZER_ASSET_ROOT);document.head.append(script);});
+  window.addEventListener('DOMContentLoaded',()=>{const script=document.createElement('script');script.src=new URL('layout-editor.js?v=20261110-adaptive1',MOZER_ASSET_ROOT);document.head.append(script);});
 }
 if(parent!==window)parent.postMessage({type:'mozer-v2:ready'},'*');
 if(parent!==window){
