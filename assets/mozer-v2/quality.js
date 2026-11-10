@@ -6,7 +6,7 @@
       const dimensionLimit=Math.min(4096/Math.max(1,width),4096/Math.max(1,height));
       const target=profile.mobile?hostScale*Math.min(deviceDpr,profile.maxDpr):Math.min(renderScale,profile.maxDpr,Math.max(1,hostScale)*deviceDpr);
       const maximum=Math.max(.125,Math.min(target,dimensionLimit));
-      const floor=profile.mobile?hostScale*Math.min(deviceDpr,profile.minDpr):1;
+      const floor=profile.mobile?hostScale*Math.min(deviceDpr,profile.minDpr):(profile.lite?profile.minDpr:1);
       const minimum=Math.min(1,floor/maximum);
       const budget=Math.sqrt(profile.pixelBudget/Math.max(1,width*height))/maximum;
       const initial=autoQuality?Math.max(minimum,Math.min(1,budget)):1;

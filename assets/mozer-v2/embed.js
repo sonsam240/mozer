@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const script=document.currentScript;
-  const release='20261110-compat1';
+  const release='20261110-lite-fps1';
   const sceneURL=new URL('../../mozer-scene-v2.html',script.src);
   sceneURL.searchParams.set('v',release);
   const allowedOrigin=sceneURL.origin;

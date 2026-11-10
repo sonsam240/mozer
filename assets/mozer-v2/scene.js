@@ -1072,6 +1072,10 @@ class RenderFluid {
 
 mozerReport('scriptsAndUI');
 const fpsIndicator=document.createElement('span');
+fpsIndicator.id='mozer-fps';
+fpsIndicator.style.cssText='position:fixed;top:10px;right:10px;z-index:2147483647;padding:5px 8px;border-radius:5px;background:rgba(0,0,0,.65);color:#fff;font:12px/1.3 monospace;pointer-events:none;';
+fpsIndicator.textContent='Загрузка…';
+document.body.append(fpsIndicator);
 const stage = document.querySelector('#stage');
 const labels = document.querySelector('#labels');
 const coreLabel = document.querySelector('#core-label');

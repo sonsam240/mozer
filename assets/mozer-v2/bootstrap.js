@@ -2,8 +2,8 @@ const MOZER_ASSET_ROOT = new URL('./', document.currentScript.src);
 const MOZER_PROFILE = (() => {
   const forced = new URLSearchParams(location.search).get('quality');
   const mobile = forced === 'mobile' || (forced !== 'desktop' && (matchMedia('(pointer:coarse)').matches || navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || innerWidth < 600));
-  const lite=!mobile&&((navigator.hardwareConcurrency||8)<=4||(navigator.deviceMemory&&navigator.deviceMemory<=4));
-  if(lite)return Object.freeze({mobile:false,lite:true,fps:30,physicsHz:20,backgroundHz:15,workers:2,volumes:2,drops:4,particles:8,airBubbles:14,fluidSamples:32,flowSamples:48,junctionSteps:28,armSteps:32,maxDpr:1.25,minDpr:1,pixelBudget:1200000,postProcess:false});
+  const lite=!mobile&&forced!=='desktop';
+  if(lite)return Object.freeze({mobile:false,lite:true,fps:30,physicsHz:15,backgroundHz:12,workers:2,volumes:1,drops:3,particles:6,airBubbles:6,fluidSamples:16,flowSamples:24,junctionSteps:20,armSteps:20,maxDpr:1,minDpr:.65,pixelBudget:800000,postProcess:false});
   return Object.freeze(mobile
     ? {mobile:true,fps:30,physicsHz:20,backgroundHz:20,workers:2,volumes:2,drops:4,particles:5,airBubbles:6,fluidSamples:32,flowSamples:48,junctionSteps:28,armSteps:32,maxDpr:2,minDpr:1.5,pixelBudget:1600000,postProcess:false}
     : {mobile:false,fps:60,physicsHz:30,backgroundHz:30,workers:3,volumes:5,drops:8,particles:13,airBubbles:32,fluidSamples:32,flowSamples:64,junctionSteps:36,armSteps:48,maxDpr:1.5,pixelBudget:2100000,postProcess:true});
@@ -40,7 +40,7 @@ window.addEventListener('message',event=>{
 });
 window.addEventListener('mozer-responsive-change',()=>window.dispatchEvent(new Event('mozer-layout')));
 if(parent===window&&new URLSearchParams(location.search).get('layoutEdit')==='1'){
-  window.addEventListener('DOMContentLoaded',()=>{const script=document.createElement('script');script.src=new URL('layout-editor.js?v=20261110-compat1',MOZER_ASSET_ROOT);document.head.append(script);});
+  window.addEventListener('DOMContentLoaded',()=>{const script=document.createElement('script');script.src=new URL('layout-editor.js?v=20261110-lite-fps1',MOZER_ASSET_ROOT);document.head.append(script);});
 }
 if(parent!==window)parent.postMessage({type:'mozer-v2:ready'},'*');
 if(parent!==window){
